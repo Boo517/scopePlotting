@@ -4,9 +4,13 @@ Created on Mon Jul 31 11:30:36 2023
 
 @author: P3 Lab Office
 """
-
+#-----------------------------------------------------------------------------#
+"""
+IMPORTS
+"""
 import numpy as np
-
+import matplotlib.pyplot as plt
+#-----------------------------------------------------------------------------#
 """
 FILE IMPORT
 """
@@ -36,9 +40,27 @@ columns = {
 #take only 9 data columns (of 10 total) from selected file 
 data = np.genfromtxt(getfile(), skip_header=2, delimiter=',',
                      usecols=range(1,10))
+#-----------------------------------------------------------------------------#
+"""
+BERTHA DATA
+"""
 # take data pertaining to Bertha
 bertha_data = data[:, (columns['trigger'], columns['rog1'], columns['rog2'], 
                        columns['diode'], columns['time'])]
 #remove DSO2 rows, where all Bertha signals are nan, avoiding interpolation
 bertha_data = np.delete(bertha_data, np.isnan(bertha_data[:,0]), 0)
 #NOTE: the slice is mutable, but delete() creates a copy
+
+#plot raw voltage data
+trigger = bertha_data[:,0]
+rog1 = bertha_data[:,1]
+rog2 = bertha_data[:,2]
+diode = bertha_data[:,3]
+bertha_time = bertha_data[:,4]
+
+fig, (ax1,ax2,ax3,ax4) = plt.subplots(4,1)
+ax1.plot(bertha_time, trigger)
+ax2.plot(bertha_time, diode)
+ax3.plot(bertha_time, rog1)
+ax4.plot(bertha_time, rog2)
+plt.show()
