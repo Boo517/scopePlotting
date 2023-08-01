@@ -37,7 +37,8 @@ columns = {
     'time' : 8      #[ps]timestamp of sample
     }
 
-#take only 9 data columns (of 10 total) from selected file 
+#take only 9 data columns (of 10 total) from selected file, 
+#ignoring the 'sample' column
 data = np.genfromtxt(getfile(), skip_header=2, delimiter=',',
                      usecols=range(1,10))
 #-----------------------------------------------------------------------------#
