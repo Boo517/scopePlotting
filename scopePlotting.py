@@ -40,8 +40,8 @@ data = np.genfromtxt(getfile(), skip_header=2, delimiter=',',
 #woulda used an enum if they existed in python
 columns = {
     'trigger' : 0,  #[V]trigger signal
-    'rog1' : 1,     #[V]Bertha rogowski coil 1
-    'rog2' : 2,     #[V]Bertha rogowski coil 2
+    'rog1_raw' : 1,     #[V]Bertha rogowski coil 1
+    'rog2_raw' : 2,     #[V]Bertha rogowski coil 2
     'diode' : 3,    #[V]diode for laser timing
     'DSO21': 4,
     'DSO22' : 5,
@@ -71,8 +71,8 @@ PLOT
 """
 #plot raw voltage data
 trigger = DSO1[:,0]
-rog1 = DSO1[:,1]
-rog2 = DSO1[:,2]
+rog1_raw = DSO1[:,1]
+rog2_raw = DSO1[:,2]
 diode = DSO1[:,3]
 bertha_time = DSO1[:,4]*10**-6     #[ps]->[us]
 
@@ -83,8 +83,8 @@ ax1.set_xlabel("Time after Trigger [us]")
 ax1.set_ylabel("Voltage [V]")
 ax1.legend()
 
-ax2.plot(bertha_time, rog1, label="Rogowski 1")
-ax2.plot(bertha_time, rog2, label="Rogowski 2")
+ax2.plot(bertha_time, rog1_raw, label="Rogowski 1")
+ax2.plot(bertha_time, rog2_raw, label="Rogowski 2")
 ax2.set_xlabel("Time after Trigger [us]")
 ax2.set_ylabel("Voltage [V]")
 ax2.legend()
@@ -94,7 +94,8 @@ plt.show()
 ROGOWSKI ANALYSIS
 """
 #get actual rogowski voltages, accounting for attenuation
-
+rog1 = rog1_raw*10**(dB1/20)
+rog2 = rog2_raw*10**(dB1/20)
 #integrate Rogowski voltages to get currents
 
 #Output peak current, current start time and risetime to screen
