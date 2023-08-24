@@ -23,6 +23,8 @@ BR2 = 820000000     #Rogowski coil coefficient for BRog2
 """
 FILE IMPORT
 """
+#this function opens a file select dialog through Tkinter and returns 
+#the path to the selected file
 def getfile():
     root = Tkinter.Tk()
     root.after(100, root.focus_force)
@@ -74,17 +76,17 @@ trigger = DSO1[:,0]
 rog1_raw = DSO1[:,1]
 rog2_raw = DSO1[:,2]
 diode = DSO1[:,3]
-bertha_time = DSO1[:,4]*10**-6     #[ps]->[us]
+time1 = DSO1[:,4]*10**-6     #[ps]->[us]
 
 fig, (ax1,ax2) = plt.subplots(2,1)
-ax1.plot(bertha_time, trigger, label="Trigger")
-ax1.plot(bertha_time, diode, label="Diode")
+ax1.plot(time1, trigger, label="Trigger")
+ax1.plot(time1, diode, label="Diode")
 ax1.set_xlabel("Time after Trigger [us]")
 ax1.set_ylabel("Voltage [V]")
 ax1.legend()
 
-ax2.plot(bertha_time, rog1_raw, label="Rogowski 1")
-ax2.plot(bertha_time, rog2_raw, label="Rogowski 2")
+ax2.plot(time1, rog1_raw, label="Rogowski 1")
+ax2.plot(time1, rog2_raw, label="Rogowski 2")
 ax2.set_xlabel("Time after Trigger [us]")
 ax2.set_ylabel("Voltage [V]")
 ax2.legend()
@@ -93,10 +95,19 @@ plt.show()
 """
 ROGOWSKI ANALYSIS
 """
+#this function returns a vector containing the 
+#cumulative trapezoidal integration of y(t) over the time vector t
+def cumtrapz(t, y):
+    dt = np.diff(t)     #timesteps
+    return np.cumsum(dt*(y[0:-1]+y[1:])/2)
+
 #get actual rogowski voltages, accounting for attenuation
 rog1 = rog1_raw*10**(dB1/20)
-rog2 = rog2_raw*10**(dB1/20)
+rog2 = rog2_raw*10**(dB2/20)
+
 #integrate Rogowski voltages to get currents
+introg1 = cumtrapz(time1, rog1)
+introg2 = cumtrapz(time1, rog2)
 
 #Output peak current, current start time and risetime to screen
 
