@@ -15,10 +15,10 @@ import tkinter as Tkinter, tkinter.filedialog as tkFileDialog
 """ 
 EXPERIMENTAL VALUES
 """
-dB1 = 19.82         #attenuation in decibels for BRog1
-dB2 = 19.49         #attenuation in decibels for BRog2
-BR1 = 765500000     #Rogowski coil coefficient for BRog1
-BR2 = 820000000     #Rogowski coil coefficient for BRog2
+dB1 = 26        #attenuation in decibels for BRog1
+dB2 = 26        #attenuation in decibels for BRog2
+R1 = 816000000     #Rogowski coil coefficient for BRog1
+R2 = 1000000000     #Rogowski coil coefficient for BRog2
 #-----------------------------------------------------------------------------#
 """
 FILE IMPORT
@@ -67,6 +67,8 @@ DSO2 = data[:,
 DSO1 = DSO1[~np.isnan(DSO1[:,0]), :]
 DSO2 = DSO2[~np.isnan(DSO2[:,0]), :]
 #NOTE: the slice creates a view of og data array (like a ref)
+#and reassigning the names doesn't change this I think? (garbage collector?)
+#TODO: see if this is true, and free up that space (the NaN rows) if it is
 
 """
 PLOT
@@ -76,18 +78,18 @@ trigger = DSO1[:,0]
 rog1_raw = DSO1[:,1]
 rog2_raw = DSO1[:,2]
 diode = DSO1[:,3]
-time1 = DSO1[:,4]*10**-6     #[ps]->[us]
+time1 = DSO1[:,4]*10**-12     #[ps]->[s]
 
 fig, (ax1,ax2) = plt.subplots(2,1)
 ax1.plot(time1, trigger, label="Trigger")
 ax1.plot(time1, diode, label="Diode")
-ax1.set_xlabel("Time after Trigger [us]")
+ax1.set_xlabel("Time after Trigger [s]")
 ax1.set_ylabel("Voltage [V]")
 ax1.legend()
 
 ax2.plot(time1, rog1_raw, label="Rogowski 1")
 ax2.plot(time1, rog2_raw, label="Rogowski 2")
-ax2.set_xlabel("Time after Trigger [us]")
+ax2.set_xlabel("Time after Trigger [s]")
 ax2.set_ylabel("Voltage [V]")
 ax2.legend()
 plt.show()
@@ -102,12 +104,35 @@ def cumtrapz(t, y):
     return np.cumsum(dt*(y[0:-1]+y[1:])/2)
 
 #get actual rogowski voltages, accounting for attenuation
+#using the formula 'attenuation[dB] = 20*log(V_in/V_out)'
 rog1 = rog1_raw*10**(dB1/20)
 rog2 = rog2_raw*10**(dB2/20)
 
+#before and long after the trigger, when current should be 0, 
+#there is a very linear slope on the integrated rogowski curves. 
+#This is probably due to a DC voltage offset and so by subtracting this offset 
+#from the voltages before integrating, we get a signal which 
+#starts at 0 current until the trigger, 
+#then returns to 0 after settling following the shot
+
+#take the average of the pre-trigger rogowski values
+#to find the DC offset and subtract it before integrating
+pretrigger = time1<0    #trigger is t=0, so pre-trig is everything < 0
+dc1 = np.mean(rog1[pretrigger])     #DC offset is average voltage pre-trigger
+dc2 = np.mean(rog2[pretrigger])
+rog1 -= dc1     #subtract the DC offset
+rog2 -= dc2
+
+
 #integrate Rogowski voltages to get currents
-introg1 = cumtrapz(time1, rog1)
-introg2 = cumtrapz(time1, rog2)
+i1 = cumtrapz(time1, rog1*R1)
+i2 = cumtrapz(time1, rog2*R2)
+
+#plot current curves
+fig, (ax3,ax4)= plt.subplots(2,1)
+ax3.plot(time1[1:], i1, time1[1:], i2)
+i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
+ax4.plot(time1[1:], i_total)
 
 #Output peak current, current start time and risetime to screen
 
