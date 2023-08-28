@@ -9,6 +9,7 @@ Created on Mon Jul 31 11:30:36 2023
 IMPORTS
 """
 import numpy as np
+#import scipy as sp
 import matplotlib.pyplot as plt
 import tkinter as Tkinter, tkinter.filedialog as tkFileDialog
 #-----------------------------------------------------------------------------#
@@ -29,12 +30,13 @@ def getfile():
     root = Tkinter.Tk()
     root.after(100, root.focus_force)
     root.after(200,root.withdraw)    
-    file_path = tkFileDialog.askopenfilename(parent=root,title='Pick a file')    
-    return file_path 
+    filepath = tkFileDialog.askopenfilename(parent=root,title='Pick a file')    
+    return filepath 
 
 #take only 9 data columns (of 10 total) from selected file, 
 #ignoring the 'sample' column
-data = np.genfromtxt(getfile(), skip_header=2, delimiter=',',
+filepath = getfile()
+data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
                      usecols=range(1,10))
 
 #this dictionary gives which column a certain data channel lies on in the
@@ -67,8 +69,9 @@ DSO2 = data[:,
 DSO1 = DSO1[~np.isnan(DSO1[:,0]), :]
 DSO2 = DSO2[~np.isnan(DSO2[:,0]), :]
 #NOTE: the slice creates a view of og data array (like a ref)
-#and reassigning the names doesn't change this I think? (garbage collector?)
-#TODO: see if this is true, and free up that space (the NaN rows) if it is
+#and reassigning the names doesn't change this I think? (garbage collection?)
+#meaning these arrays take up twice as much memory as they need to
+#BUT that probably doesn't matter much
 
 """
 PLOT
@@ -97,11 +100,13 @@ plt.show()
 """
 ROGOWSKI ANALYSIS
 """
-#this function returns a vector containing the 
+#this function returns a vector the same shape as y(t) containing the 
 #cumulative trapezoidal integration of y(t) over the time vector t
+#with initial value 0 
 def cumtrapz(t, y):
     dt = np.diff(t)     #timesteps
-    return np.cumsum(dt*(y[0:-1]+y[1:])/2)
+    integration = np.cumsum(dt*(y[0:-1]+y[1:])/2)
+    return np.concatenate(([0.0], integration))
 
 #get actual rogowski voltages, accounting for attenuation
 #using the formula 'attenuation[dB] = 20*log(V_in/V_out)'
@@ -125,20 +130,71 @@ rog2 -= dc2
 
 
 #integrate Rogowski voltages to get currents
+
 i1 = cumtrapz(time1, rog1*R1)
 i2 = cumtrapz(time1, rog2*R2)
 
-#plot current curves
+#test my code by comparing it to scipy
+#UPDATE 8-28-23, resulted in same array, so my function is good
+# i1_test = sp.integrate.cumtrapz(rog1*R1, time1, initial=0)
+# i2_test = sp.integrate.cumtrapz(rog2*R2, time1, initial=0)
+# print(np.array_equal(i1, i1_test))
+# print(np.array_equal(i2, i2_test))
+
+#plot current curves for the first 5 microseconds
+peak_mask = np.logical_and(time1>0, time1<5*10**-6)    #mask to get first 5 us
 fig, (ax3,ax4)= plt.subplots(2,1)
-ax3.plot(time1[1:], i1, time1[1:], i2)
+ax3.plot(time1[peak_mask], i1[peak_mask], label="Rogowski 1")
+ax3.plot(time1[peak_mask], i2[peak_mask], label="Rogowski 2")
+ax3.set_xlabel("Time after Trigger [s]")
+ax3.set_ylabel("Current [A]")
+ax3.legend()
+
+
 i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
-ax4.plot(time1[1:], i_total)
+ax4.plot(time1[peak_mask], i_total[peak_mask], label="Total Current")
+ax4.set_xlabel("Time after Trigger [s]")
+ax4.set_ylabel("Current [A]")
+ax4.legend()
 
 #Output peak current, current start time and risetime to screen
+peak_current = max(i_total)
+peak_time = time1[i_total==peak_current][0]
+#get start time by extrapolating from linear region (current rise like sin^2)
+#start_time = 
+risetime = peak_time
+
+print("Peak Current: {:.4f} kA at t = {:.4f} microseconds after trigger"
+      .format(peak_current/10**3, peak_time*10**6))
+print("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
+
 
 """
 DATA EXPORT
 """
 #export data for plots to text file for Origin import
-export_array = np.concatenate((DSO1, DSO2), 1) # concatenate horizontally
+export_array = np.concatenate((
+    i_total[np.newaxis].T, DSO1, DSO2), 1) #horizontal cat
+#NOTE: new data array has 11 columns from the original 9, as the time column
+#has been split in 2 and a new column has been added for the total current
+np.savetxt(filepath[:-4]+" formatted.csv", export_array)
+#TODO: decide if this cumbersome 18-digit scientific notation is what we want
+#and csv vs txt (currently using csv just for distinguishing from scope out)
+
+"""
+REFERENCE DICT FOR WRITTEN FILE FORMAT
+columns = {
+    'current' : 0   #[A]total current
+    'trigger' : 1,  #[V]trigger signal
+    'rog1_raw' : 2, #[V]rogowski coil 1
+    'rog2_raw' : 3, #[V]rogowski coil 2
+    'diode' : 4,    #[V]diode for laser timing
+    'time1' : 5,    #[s]timestamp of samples for DSO1
+    'DSO21': 6,
+    'DSO22' : 7,
+    'DSO23' : 8,
+    'DSO24' : 9,
+    'time2' : 10    #[s]timestamp of samples for DSO2
+    }
+"""
 
