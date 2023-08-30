@@ -151,50 +151,64 @@ i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
 """
 PEAK CURRENT AND RISE TIME
 """
-
-# %%
-"""
-PLOTTING
-"""
-#plot current curves for the first 5 microseconds after trigger
-peak_mask = np.logical_and(time1>0, time1<5*10**-6)    #mask to get first 5 us
-fig, (ax3,ax4)= plt.subplots(2,1)
-# ax3.plot(time1[peak_mask], i1[peak_mask], label="Rogowski 1")
-ax3.plot(time1, i1, label="Rogowski 1")
-ax3.plot(time1[peak_mask], i2[peak_mask], label="Rogowski 2")
-ax3.set_xlabel("Time after Trigger [s]")
-ax3.set_ylabel("Current [A]")
-ax3.legend()
-
-
-ax4.plot(time1[peak_mask], i_total[peak_mask], label="Total Current")
-ax4.set_xlabel("Time after Trigger [s]")
-ax4.set_ylabel("Current [A]")
-ax4.legend()
-
-#Output peak current, current start time and risetime to screen
 peak_current = max(i_total)
 peak_time = time1[i_total==peak_current][0]
+peak_mask = np.logical_and(time1>=0, time1<=peak_time)
+
 #get start time by extrapolating from linear region (current rise like sin^2)
 #mask for indices in linear region where we will do regression
 linear_mask = np.logical_and(i_total[peak_mask]<=0.8*peak_current,   
-                             i_total[peak_mask]>=0.2*peak_current)    
+                              i_total[peak_mask]>=0.2*peak_current)  
+#NOTE: without restricting linear_mask to peak_mask (0-peak current),
+#linear_mask will include the current ramp down after peak, which we don't want  
 time1_linear = time1[peak_mask][linear_mask]
 i_linear = i_total[peak_mask][linear_mask]
-fig, ax5 = plt.subplots()
-ax5.scatter(time1_linear, i_linear)
+
 #y = mx + c = [x, 1][m, c].T = A*[m, c]
 #numpy least squares function gives m, c given A, y
 A = np.vstack((time1_linear, np.ones(len(time1_linear)))).T     
 m, c = np.linalg.lstsq(A, i_linear, rcond=None)[0]
 
-#plot fit line over current plot
-ax4.plot(time1_linear, m*time1_linear + c, label="Linear Fit")
-#start_time = 
+#y = mx + c = m(x + c/m), so -c/m is zero-crossing
+start_time = -c/m
+risetime = peak_time - start_time
 
+#Output peak current, current start time and risetime to screen
 print("Peak Current: {:.4f} kA at t = {:.4f} microseconds after trigger"
       .format(peak_current/10**3, peak_time*10**6))
+print("Current Start: t = {:.4f} microseconds after trigger"
+      .format(start_time*10**6))
 print("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
+
+
+# %%
+"""
+PLOTTING
+"""
+plot_xlim = peak_time + 5*10**-6    #plot from trigger to 5 us after peak
+#plot current through both Rogowskis
+fig, (ax3,ax4)= plt.subplots(2,1)
+ax3.plot(time1, i1, label="Rogowski 1")
+ax3.plot(time1, i2, label="Rogowski 2")
+
+ax3.set_xlabel("Time after Trigger [s]")
+ax3.set_ylabel("Current [A]")
+ax3.legend()
+
+ax4.plot(time1, i_total, label="Total Current")
+#plot fit line over current plot
+extrapolate_mask = np.logical_and(time1[peak_mask]>=start_time, 
+                                  i_total[peak_mask]<=0.8*peak_current)
+time1_fit = time1[peak_mask][extrapolate_mask]
+ax4.plot(time1_fit, m*time1_fit + c, '--', label="Linear Fit")
+ax4.plot(start_time, 0, 'x', label="Current Start")
+ax4.plot(peak_time, peak_current, 'x', label="Peak Current")
+
+ax4.set_xlim([0, plot_xlim])
+ax4.set_xlabel("Time after Trigger [s]")
+ax4.set_ylabel("Current [A]")
+ax4.legend()
+
 
 # %%
 """
