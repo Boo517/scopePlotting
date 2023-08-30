@@ -85,17 +85,17 @@ trigger = DSO1[:,0]
 rog1_raw = DSO1[:,1]
 rog2_raw = DSO1[:,2]
 diode = DSO1[:,3]
-time1 = DSO1[:,4]*10**-12     #[ps]->[s]
+time1_raw = DSO1[:,4]*10**-12     #[ps]->[s]
 
 fig, (ax1,ax2) = plt.subplots(2,1)
-ax1.plot(time1, trigger, label="Trigger")
-ax1.plot(time1, diode, label="Diode")
+ax1.plot(time1_raw, trigger, label="Trigger")
+ax1.plot(time1_raw, diode, label="Diode")
 ax1.set_xlabel("Time after Trigger [s]")
 ax1.set_ylabel("Voltage [V]")
 ax1.legend()
 
-ax2.plot(time1, rog1_raw, label="Rogowski 1")
-ax2.plot(time1, rog2_raw, label="Rogowski 2")
+ax2.plot(time1_raw, rog1_raw, label="Rogowski 1")
+ax2.plot(time1_raw, rog2_raw, label="Rogowski 2")
 ax2.set_xlabel("Time after Trigger [s]")
 ax2.set_ylabel("Voltage [V]")
 ax2.legend()
@@ -125,19 +125,29 @@ rog2 = rog2_raw*10**(dB2/20)
 #starts at 0 current until the trigger, 
 #then returns to 0 after settling following the shot
 
-#take the average of the pre-trigger rogowski values
+#take the average of the pre-current rogowski values from trigger on
 #to find the DC offset and subtract it before integrating
-pretrigger = time1<0    #trigger is t=0, so pre-trig is everything < 0
-dc1 = np.mean(rog1[pretrigger])     #DC offset is average voltage pre-trigger
-dc2 = np.mean(rog2[pretrigger])
+#NOTE: not averaging for all pretrigger time anymore, because it was far enough
+#from the actual current rise that changes in noise and dc offset resulted
+#in an inaccurate calibration
+rog1_peak_time = time1_raw[rog1 == max(rog1)][0]
+precurrent = np.logical_and(time1_raw>=(rog1_peak_time -  2.8*10**-6),
+                            time1_raw<=(rog1_peak_time -  .80*10**-6))    
+#NOTE: right now, just taking .75m us before max rog1 voltage as time to stop
+#averaging for finding DC offset, with fixed 1 us of averaging time
+#for future reference: could be better
+
+dc1 = np.mean(rog1[precurrent])     #DC offset is average voltage pre-current
+dc2 = np.mean(rog2[precurrent])
 rog1 -= dc1     #subtract the DC offset
 rog2 -= dc2
 
 
 #integrate Rogowski voltages to get currents
-
-i1 = cumtrapz(time1, rog1*R1)
-i2 = cumtrapz(time1, rog2*R2)
+integration_mask = time1_raw>=0
+time1 = time1_raw[integration_mask]
+i1 = cumtrapz(time1, rog1[integration_mask]*R1)
+i2 = cumtrapz(time1, rog2[integration_mask]*R2)
 i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
 
 #test my code by comparing it to scipy
