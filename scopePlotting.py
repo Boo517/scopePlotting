@@ -4,7 +4,8 @@ Created on Mon Jul 31 11:30:36 2023
 
 @author: P3 Lab Office
 """
-#-----------------------------------------------------------------------------#
+
+# %%
 """
 IMPORTS
 """
@@ -12,7 +13,8 @@ import numpy as np
 #import scipy as sp
 import matplotlib.pyplot as plt
 import tkinter as Tkinter, tkinter.filedialog as tkFileDialog
-#-----------------------------------------------------------------------------#
+
+# %%
 """ 
 EXPERIMENTAL VALUES
 """
@@ -20,7 +22,8 @@ dB1 = 26        #attenuation in decibels for BRog1
 dB2 = 26        #attenuation in decibels for BRog2
 R1 = 816000000     #Rogowski coil coefficient for BRog1
 R2 = 1000000000     #Rogowski coil coefficient for BRog2
-#-----------------------------------------------------------------------------#
+
+# %%
 """
 FILE IMPORT
 """
@@ -54,7 +57,7 @@ columns = {
     'time' : 8      #[ps]timestamp of sample
     }
 
-#-----------------------------------------------------------------------------#
+# %%
 """
 SEPARATE SCOPE DATA
 """
@@ -73,6 +76,7 @@ DSO2 = DSO2[~np.isnan(DSO2[:,0]), :]
 #meaning these arrays take up twice as much memory as they need to
 #BUT that probably doesn't matter much
 
+# %%
 """
 PLOT
 """
@@ -97,6 +101,7 @@ ax2.set_ylabel("Voltage [V]")
 ax2.legend()
 plt.show()
 
+# %%
 """
 ROGOWSKI ANALYSIS
 """
@@ -133,6 +138,7 @@ rog2 -= dc2
 
 i1 = cumtrapz(time1, rog1*R1)
 i2 = cumtrapz(time1, rog2*R2)
+i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
 
 #test my code by comparing it to scipy
 #UPDATE 8-28-23, resulted in same array, so my function is good
@@ -141,17 +147,26 @@ i2 = cumtrapz(time1, rog2*R2)
 # print(np.array_equal(i1, i1_test))
 # print(np.array_equal(i2, i2_test))
 
-#plot current curves for the first 5 microseconds
+# %%
+"""
+PEAK CURRENT AND RISE TIME
+"""
+
+# %%
+"""
+PLOTTING
+"""
+#plot current curves for the first 5 microseconds after trigger
 peak_mask = np.logical_and(time1>0, time1<5*10**-6)    #mask to get first 5 us
 fig, (ax3,ax4)= plt.subplots(2,1)
-ax3.plot(time1[peak_mask], i1[peak_mask], label="Rogowski 1")
+# ax3.plot(time1[peak_mask], i1[peak_mask], label="Rogowski 1")
+ax3.plot(time1, i1, label="Rogowski 1")
 ax3.plot(time1[peak_mask], i2[peak_mask], label="Rogowski 2")
 ax3.set_xlabel("Time after Trigger [s]")
 ax3.set_ylabel("Current [A]")
 ax3.legend()
 
 
-i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
 ax4.plot(time1[peak_mask], i_total[peak_mask], label="Total Current")
 ax4.set_xlabel("Time after Trigger [s]")
 ax4.set_ylabel("Current [A]")
@@ -161,14 +176,27 @@ ax4.legend()
 peak_current = max(i_total)
 peak_time = time1[i_total==peak_current][0]
 #get start time by extrapolating from linear region (current rise like sin^2)
+#mask for indices in linear region where we will do regression
+linear_mask = np.logical_and(i_total[peak_mask]<=0.8*peak_current,   
+                             i_total[peak_mask]>=0.2*peak_current)    
+time1_linear = time1[peak_mask][linear_mask]
+i_linear = i_total[peak_mask][linear_mask]
+fig, ax5 = plt.subplots()
+ax5.scatter(time1_linear, i_linear)
+#y = mx + c = [x, 1][m, c].T = A*[m, c]
+#numpy least squares function gives m, c given A, y
+A = np.vstack((time1_linear, np.ones(len(time1_linear)))).T     
+m, c = np.linalg.lstsq(A, i_linear, rcond=None)[0]
+
+#plot fit line over current plot
+ax4.plot(time1_linear, m*time1_linear + c, label="Linear Fit")
 #start_time = 
-risetime = peak_time
 
 print("Peak Current: {:.4f} kA at t = {:.4f} microseconds after trigger"
       .format(peak_current/10**3, peak_time*10**6))
 print("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
 
-
+# %%
 """
 DATA EXPORT
 """
