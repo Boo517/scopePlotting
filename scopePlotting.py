@@ -46,22 +46,22 @@ data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
 #data array 
 #woulda used an enum if they existed in python
 columns = {
-    'trigger' : 0,  #[V]trigger signal
+    'trigger' : 0,      #[V]trigger signal
     'rog1_raw' : 1,     #[V]Bertha rogowski coil 1
     'rog2_raw' : 2,     #[V]Bertha rogowski coil 2
-    'diode' : 3,    #[V]diode for laser timing
+    'diode' : 3,        #[V]diode for laser timing
     'DSO21': 4,
     'DSO22' : 5,
     'DSO23' : 6,
     'DSO24' : 7,
-    'time' : 8      #[ps]timestamp of sample
+    'time' : 8          #[ps]timestamp of sample
     }
 
 # %%
 """
 SEPARATE SCOPE DATA
 """
-#unpack data into arrays based on which scope it's from
+#unpack data into 2 arrays based on scope which recorded it
 #in order to avoid the timing mismatch problem (2 separate time columns)
 #doing this instead of interpolation to avoid creating new datapoints
 DSO1 = data[:, 
@@ -85,17 +85,18 @@ trigger = DSO1[:,0]
 rog1_raw = DSO1[:,1]
 rog2_raw = DSO1[:,2]
 diode = DSO1[:,3]
-time1_raw = DSO1[:,4]*10**-12     #[ps]->[s]
+DSO1[:,4] = DSO1[:,4]*10**-12     #[ps]->[s]
+time1 = DSO1[:,4]
 
 fig, (ax1,ax2) = plt.subplots(2,1)
-ax1.plot(time1_raw, trigger, label="Trigger")
-ax1.plot(time1_raw, diode, label="Diode")
+ax1.plot(time1, trigger, label="Trigger")
+ax1.plot(time1, diode, label="Diode")
 ax1.set_xlabel("Time after Trigger [s]")
 ax1.set_ylabel("Voltage [V]")
 ax1.legend()
 
-ax2.plot(time1_raw, rog1_raw, label="Rogowski 1")
-ax2.plot(time1_raw, rog2_raw, label="Rogowski 2")
+ax2.plot(time1, rog1_raw, label="Rogowski 1")
+ax2.plot(time1, rog2_raw, label="Rogowski 2")
 ax2.set_xlabel("Time after Trigger [s]")
 ax2.set_ylabel("Voltage [V]")
 ax2.legend()
@@ -117,37 +118,53 @@ def cumtrapz(t, y):
 #using the formula 'attenuation[dB] = 20*log(V_in/V_out)'
 rog1 = rog1_raw*10**(dB1/20)
 rog2 = rog2_raw*10**(dB2/20)
-
-#before and long after the trigger, when current should be 0, 
-#there is a very linear slope on the integrated rogowski curves. 
-#This is probably due to a DC voltage offset and so by subtracting this offset 
-#from the voltages before integrating, we get a signal which 
-#starts at 0 current until the trigger, 
+  
+#a DC voltage offset in the raw rogowski data results in a linear current slope
+#when current should actually be 0.
+#By subtracting this offset from the voltages before integrating, 
+#we get a signal which starts at 0 current before the shot, 
 #then returns to 0 after settling following the shot
+#(assuming the offset doesn't change over the course of the experiment)
+#UPDATE 8-30-23: regarding this^, it seems that the DC offset does frequently 
+#jump in a discrete step, sometimes long before and other times long after 
+#peak current. To deal with this, the averaging used to find the offset 
+#is calculated just before current starts. This hopefully means that 
+#total current is accurate for the window of interest, from current start to
+#around 5 us after peak. If the step occurs before averaging, it has no
+#effect, and if it occurs after the window of interest, it just results in 
+#a very apparent nonphysical linear current slope at a time past where we care
 
-#take the average of the pre-current rogowski values from trigger on
+#take the average of the pre-current rogowski values 
 #to find the DC offset and subtract it before integrating
 #NOTE: not averaging for all pretrigger time anymore, because it was far enough
 #from the actual current rise that changes in noise and dc offset resulted
-#in an inaccurate calibration
-rog1_peak_time = time1_raw[rog1 == max(rog1)][0]
-precurrent = np.logical_and(time1_raw>=(rog1_peak_time -  2.8*10**-6),
-                            time1_raw<=(rog1_peak_time -  .80*10**-6))    
-#NOTE: right now, just taking .75m us before max rog1 voltage as time to stop
-#averaging for finding DC offset, with fixed 1 us of averaging time
-#for future reference: could be better
+#in an inaccurate calibration (see above text wall of DOOM)
+rog1_peak_time = time1[rog1 == max(rog1)][0]
+averaging_time = 4*10**-6       #[s]
+prepeak_spacing = .8*10**-6     #[s]spacing from peak so averaging doesn't
+                                #occur after current start. >expected risetime
+avg_end = rog1_peak_time -  prepeak_spacing
+avg_start = avg_end - averaging_time
+precurrent = np.logical_and(time1>=avg_start, time1<=avg_end)   
+#NOTE: right now, just taking .8 us before max rog1 voltage as time to stop
+#averaging for finding DC offset, with fixed 2 us of averaging time
+#for future reference: could be better to adjust averaging time based on 
+#period of noise and use a more robust method than a fixed offset for finding 
+#current start time
 
 dc1 = np.mean(rog1[precurrent])     #DC offset is average voltage pre-current
 dc2 = np.mean(rog2[precurrent])
-rog1 -= dc1     #subtract the DC offset
+rog1 -= dc1     #subtract the DC offsets
 rog2 -= dc2
 
-
 #integrate Rogowski voltages to get currents
-integration_mask = time1_raw>=0
-time1 = time1_raw[integration_mask]
-i1 = cumtrapz(time1, rog1[integration_mask]*R1)
-i2 = cumtrapz(time1, rog2[integration_mask]*R2)
+int_mask = time1>avg_start  #integrate only after when DC offset calibrated
+i1 = cumtrapz(time1[int_mask], rog1[int_mask]*R1)
+i2 = cumtrapz(time1[int_mask], rog2[int_mask]*R2)
+#pad with zeros to reach length of other arrays for export
+num_zeros = len(time1) - len(i1)
+i1 = np.pad(i1, (num_zeros,0))
+i2 = np.pad(i2, (num_zeros,0))
 i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
 
 #test my code by comparing it to scipy
@@ -195,7 +212,6 @@ print("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
 """
 PLOTTING
 """
-plot_xlim = peak_time + 5*10**-6    #plot from trigger to 5 us after peak
 #plot current through both Rogowskis
 fig, (ax3,ax4)= plt.subplots(2,1)
 ax3.plot(time1, i1, label="Rogowski 1")
@@ -214,7 +230,10 @@ ax4.plot(time1_fit, m*time1_fit + c, '--', label="Linear Fit")
 ax4.plot(start_time, 0, 'x', label="Current Start")
 ax4.plot(peak_time, peak_current, 'x', label="Peak Current")
 
+plot_xlim = peak_time + 5*10**-6    #plot from trigger to 5 us after peak
+plot_ylim = peak_current    #plot from 0 to peak current
 ax4.set_xlim([0, plot_xlim])
+ax4.set_ylim([-.1*plot_ylim, plot_ylim*1.1])    #give 10% of peak as padding
 ax4.set_xlabel("Time after Trigger [s]")
 ax4.set_ylabel("Current [A]")
 ax4.legend()
