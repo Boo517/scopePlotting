@@ -39,6 +39,7 @@ def getfile():
 #take only 9 data columns (of 10 total) from selected file, 
 #ignoring the 'sample' column
 filepath = getfile()
+folder = '/'.join(filepath.split('/')[:-1]) + '/'
 data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
                      usecols=range(1,10))
 
@@ -78,15 +79,14 @@ DSO2 = DSO2[~np.isnan(DSO2[:,0]), :]
 
 # %%
 """
-PLOT
+PLOT RAW VOLTAGE DATA
 """
-#plot raw voltage data
 trigger = DSO1[:,0]
 rog1_raw = DSO1[:,1]
 rog2_raw = DSO1[:,2]
 diode = DSO1[:,3]
-DSO1[:,4] = DSO1[:,4]*10**-12     #[ps]->[s]
 time1 = DSO1[:,4]
+time1 = time1*10**-12     #[ps]->[s]
 
 fig, (ax1,ax2) = plt.subplots(2,1)
 ax1.plot(time1, trigger, label="Trigger")
@@ -101,6 +101,9 @@ ax2.set_xlabel("Time after Trigger [s]")
 ax2.set_ylabel("Voltage [V]")
 ax2.legend()
 plt.show()
+
+#save figure as png
+plt.savefig(folder+"raw_plots")
 
 # %%
 """
@@ -210,7 +213,7 @@ print("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
 
 # %%
 """
-PLOTTING
+PLOTTING CURRENT
 """
 #plot current through both Rogowskis
 fig, (ax3,ax4)= plt.subplots(2,1)
@@ -238,6 +241,8 @@ ax4.set_xlabel("Time after Trigger [s]")
 ax4.set_ylabel("Current [A]")
 ax4.legend()
 
+#save figure as png
+plt.savefig(folder+"currrent_plots")
 
 # %%
 """
@@ -255,17 +260,17 @@ np.savetxt(filepath[:-4]+" formatted.csv", export_array)
 """
 REFERENCE DICT FOR WRITTEN FILE FORMAT
 columns = {
-    'current' : 0   #[A]total current
+    'current' : 0   #[A]total current from integrated Rogowskis 1 and 2
     'trigger' : 1,  #[V]trigger signal
     'rog1_raw' : 2, #[V]rogowski coil 1
     'rog2_raw' : 3, #[V]rogowski coil 2
     'diode' : 4,    #[V]diode for laser timing
-    'time1' : 5,    #[s]timestamp of samples for DSO1
+    'time1' : 5,    #[ps]timestamp of samples for DSO1
     'DSO21': 6,
     'DSO22' : 7,
     'DSO23' : 8,
     'DSO24' : 9,
-    'time2' : 10    #[s]timestamp of samples for DSO2
+    'time2' : 10    #[ps]timestamp of samples for DSO2
     }
 """
 
