@@ -100,6 +100,9 @@ ax2.plot(time1, rog2_raw, label="Rogowski 2")
 ax2.set_xlabel("Time after Trigger [s]")
 ax2.set_ylabel("Voltage [V]")
 ax2.legend()
+#maximize plot
+figManager = plt.get_current_fig_manager()
+figManager.window.showMaximized()
 plt.show()
 
 #save figure as png
@@ -240,6 +243,10 @@ ax4.set_ylim([-.1*plot_ylim, plot_ylim*1.1])    #give 10% of peak as padding
 ax4.set_xlabel("Time after Trigger [s]")
 ax4.set_ylabel("Current [A]")
 ax4.legend()
+#maximize plot
+figManager = plt.get_current_fig_manager()
+figManager.window.showMaximized()
+plt.show()
 
 #save figure as png
 plt.savefig(folder+"currrent_plots")
