@@ -227,7 +227,10 @@ ax3.set_xlabel("Time after Trigger [s]")
 ax3.set_ylabel("Current [A]")
 ax3.legend()
 
+#plot total current
 ax4.plot(time1, i_total, label="Total Current")
+#plot diode, scaled by peak current for visibility
+ax4.plot(time1, diode*peak_current, label="Diode*peak_current")
 #plot fit line over current plot
 extrapolate_mask = np.logical_and(time1[peak_mask]>=start_time, 
                                   i_total[peak_mask]<=0.8*peak_current)
@@ -248,6 +251,8 @@ figManager = plt.get_current_fig_manager()
 figManager.window.showMaximized()
 plt.show()
 
+#add title with folder filepath
+fig.suptitle(folder)
 #save figure as png
 plt.savefig(folder+"currrent_plots")
 
