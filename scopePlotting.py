@@ -40,8 +40,11 @@ def getfile():
 #ignoring the 'sample' column
 filepath = getfile()
 folder = '/'.join(filepath.split('/')[:-1]) + '/'
+#string holding date and shot number, e.g 072623s2
+dateshot = filepath.split('/')[-2] 
+#read in text file as np array  
 data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
-                     usecols=range(1,10))
+                      usecols=range(1,10))
 
 #this dictionary gives which column a certain data channel lies on in the
 #data array 
@@ -106,7 +109,7 @@ figManager.window.showMaximized()
 plt.show()
 
 #save figure as png
-plt.savefig(folder+"raw_plots")
+plt.savefig(folder+dateshot+"_raw_plots")
 
 # %%
 """
@@ -207,11 +210,16 @@ start_time = -c/m
 risetime = peak_time - start_time
 
 #Output peak current, current start time and risetime to screen
-print("Peak Current: {:.4f} kA at t = {:.4f} microseconds after trigger"
-      .format(peak_current/10**3, peak_time*10**6))
-print("Current Start: t = {:.4f} microseconds after trigger"
+peakstring = ("Peak Current: {:.4f} kA at t = {:.4f} microseconds after trigger"
+              .format(peak_current/10**3, peak_time*10**6))
+startstring = ("Current Start: t = {:.4f} microseconds after trigger"
       .format(start_time*10**6))
-print("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
+risestring = ("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
+shotstats = peakstring+"\n"+startstring+"\n"+risestring+"\n"
+print(shotstats)
+#write shot stats to text file
+with open(folder+dateshot+"_shotstats.txt", 'w') as file:
+    file.write(shotstats)
 
 
 # %%
@@ -254,7 +262,7 @@ plt.show()
 #add title with folder filepath
 fig.suptitle(folder)
 #save figure as png
-plt.savefig(folder+"currrent_plots")
+plt.savefig(folder+dateshot+"_currrent_plots")
 
 # %%
 """
