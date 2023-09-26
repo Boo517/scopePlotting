@@ -10,7 +10,7 @@ Created on Mon Jul 31 11:30:36 2023
 IMPORTS
 """
 import numpy as np
-#import scipy as sp
+import scipy as sp
 import matplotlib.pyplot as plt
 import tkinter as Tkinter, tkinter.filedialog as tkFileDialog
 
@@ -20,8 +20,10 @@ EXPERIMENTAL VALUES
 """
 dB1 = 26        #attenuation in decibels for BRog1
 dB2 = 26        #attenuation in decibels for BRog2
-R1 = 816000000     #Rogowski coil coefficient for BRog1
+R1 = 816000000      #Rogowski coil coefficient for BRog1
 R2 = 1000000000     #Rogowski coil coefficient for BRog2
+C =  3.1*10**-6     #[F]Bertha main cap capacitance, for charge sanity check
+V =  50*10**3       #[V]      ~         charge voltage,             ~             
 
 # %%
 """
@@ -187,7 +189,10 @@ i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
 """
 PEAK CURRENT AND RISE TIME
 """
-peak_current = max(i_total)
+#in order to ignore post-pulse current drift affecting peakfinding, choose 
+#first local maximum above 50kV
+peaks, _ = sp.signal.find_peaks(i_total, height=50*10**3)
+peak_current = i_total[peaks[0]]     
 peak_time = time1[i_total==peak_current][0]
 peak_mask = np.logical_and(time1>=0, time1<=peak_time)
 
@@ -209,13 +214,24 @@ m, c = np.linalg.lstsq(A, i_linear, rcond=None)[0]
 start_time = -c/m
 risetime = peak_time - start_time
 
+#integrate current to get a feel for total charge, to compare to 
+#total cap charge as a sanity check
+#choose region from current start to peak, then from peak till i=.2*peak
+#to get close to encapsulating entire pulse
+charge_mask = np.logical_or(np.logical_and(time1>=start_time, time1<peak_time), 
+   np.logical_and(time1>=peak_time, i_total>=.2*peak_current))
+charge = np.trapz(i_total[charge_mask], time1[charge_mask])
+cap_charge = C*V
+
 #Output peak current, current start time and risetime to screen
 peakstring = ("Peak Current: {:.4f} kA at t = {:.4f} microseconds after trigger"
               .format(peak_current/10**3, peak_time*10**6))
 startstring = ("Current Start: t = {:.4f} microseconds after trigger"
       .format(start_time*10**6))
 risestring = ("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
-shotstats = peakstring+"\n"+startstring+"\n"+risestring+"\n"
+chargestring = ("""Charge from integrating: {:.4f} C
+Capacitor charge: {:.4f} C""".format(charge, cap_charge))
+shotstats = peakstring+"\n"+startstring+"\n"+risestring+"\n"+chargestring
 print(shotstats)
 #write shot stats to text file
 with open(folder+dateshot+"_shotstats.txt", 'w') as file:
@@ -246,6 +262,8 @@ time1_fit = time1[peak_mask][extrapolate_mask]
 ax4.plot(time1_fit, m*time1_fit + c, '--', label="Linear Fit")
 ax4.plot(start_time, 0, 'x', label="Current Start")
 ax4.plot(peak_time, peak_current, 'x', label="Peak Current")
+ax4.plot(time1[charge_mask][-1], i_total[charge_mask][-1], 'kx', 
+         label="Charge Integration End")
 
 plot_xlim = peak_time + 5*10**-6    #plot from trigger to 5 us after peak
 plot_ylim = peak_current    #plot from 0 to peak current
@@ -253,7 +271,7 @@ ax4.set_xlim([0, plot_xlim])
 ax4.set_ylim([-.1*plot_ylim, plot_ylim*1.1])    #give 10% of peak as padding
 ax4.set_xlabel("Time after Trigger [s]")
 ax4.set_ylabel("Current [A]")
-ax4.legend()
+ax4.legend(loc="lower right")
 #maximize plot
 figManager = plt.get_current_fig_manager()
 figManager.window.showMaximized()
@@ -286,6 +304,7 @@ columns = {
     'rog2_raw' : 3, #[V]rogowski coil 2
     'diode' : 4,    #[V]diode for laser timing
     'time1' : 5,    #[ps]timestamp of samples for DSO1
+                    #NOTE: still in ps bc og time columns in arrays untouched
     'DSO21': 6,
     'DSO22' : 7,
     'DSO23' : 8,
