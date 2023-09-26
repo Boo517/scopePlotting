@@ -158,7 +158,7 @@ avg_end = rog1_peak_time -  prepeak_spacing
 avg_start = avg_end - averaging_time
 precurrent = np.logical_and(time1>=avg_start, time1<=avg_end)   
 #NOTE: right now, just taking .8 us before max rog1 voltage as time to stop
-#averaging for finding DC offset, with fixed 2 us of averaging time
+#averaging for finding DC offset, with fixed 4 us of averaging time
 #for future reference: could be better to adjust averaging time based on 
 #period of noise and use a more robust method than a fixed offset for finding 
 #current start time
