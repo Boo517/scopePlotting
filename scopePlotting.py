@@ -18,10 +18,14 @@ import tkinter as Tkinter, tkinter.filedialog as tkFileDialog
 """ 
 EXPERIMENTAL VALUES
 """
-dB1 = 26        #attenuation in decibels for BRog1
-dB2 = 26        #attenuation in decibels for BRog2
-R1 = 816000000      #Rogowski coil coefficient for BRog1
-R2 = 1000000000     #Rogowski coil coefficient for BRog2
+# dB1 = 26        #attenuation in decibels for BRog1
+# dB2 = 26        #attenuation in decibels for BRog2
+dB1 = 19.82     #from Ann's code
+dB2 = 19.49
+# R1 = 816000000      #Rogowski coil coefficient for BRog1
+# R2 = 1000000000     #Rogowski coil coefficient for BRog2
+R1 = 765500000  #from Ann's code          
+R2 = 820000000
 C =  3.1*10**-6     #[F]Bertha main cap capacitance, for charge sanity check
 V =  50*10**3       #[V]      ~         charge voltage,             ~             
 
@@ -190,8 +194,8 @@ i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
 PEAK CURRENT AND RISE TIME
 """
 #in order to ignore post-pulse current drift affecting peakfinding, choose 
-#first local maximum above 50kV
-peaks, _ = sp.signal.find_peaks(i_total, height=50*10**3)
+#first local maximum above 10kV
+peaks, _ = sp.signal.find_peaks(i_total, height=10*10**3)
 peak_current = i_total[peaks[0]]     
 peak_time = time1[i_total==peak_current][0]
 peak_mask = np.logical_and(time1>=0, time1<=peak_time)
@@ -218,8 +222,9 @@ risetime = peak_time - start_time
 #total cap charge as a sanity check
 #choose region from current start to peak, then from peak till i=.2*peak
 #to get close to encapsulating entire pulse
-charge_mask = np.logical_or(np.logical_and(time1>=start_time, time1<peak_time), 
-   np.logical_and(time1>=peak_time, i_total>=.2*peak_current))
+charge_mask = np.logical_and(
+    np.logical_and(time1>=start_time, time1<=peak_time+10*10**-6), 
+                             i_total>=.2*peak_current)
 charge = np.trapz(i_total[charge_mask], time1[charge_mask])
 cap_charge = C*V
 
