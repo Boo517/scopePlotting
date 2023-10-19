@@ -42,13 +42,13 @@ def getfile():
     filepath = tkFileDialog.askopenfilename(parent=root,title='Pick a file')    
     return filepath 
 
-#take only 9 data columns (of 10 total) from selected file, 
-#ignoring the 'sample' column
 filepath = getfile()
 folder = '/'.join(filepath.split('/')[:-1]) + '/'
 #string holding date and shot number, e.g 072623s2
 dateshot = filepath.split('/')[-2] 
-#read in text file as np array  
+#read in text file as np array 
+#taking only 9 data columns (of 10 total) from selected file, 
+#ignoring the 'sample' column 
 data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
                       usecols=range(1,10))
 
