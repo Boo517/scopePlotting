@@ -155,6 +155,7 @@ rog2 = rog2_raw*10**(dB2/20)
 #from the actual current rise that changes in noise and dc offset resulted
 #in an inaccurate calibration (see above text wall of DOOM)
 rog1_peak_time = time1[rog1 == max(rog1)][0]
+# time1[np.argmax(rog1)]
 averaging_time = 4*10**-6       #[s]
 prepeak_spacing = .8*10**-6     #[s]spacing from peak so averaging doesn't
                                 #occur after current start. >expected risetime
@@ -194,7 +195,7 @@ i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
 PEAK CURRENT AND RISE TIME
 """
 #in order to ignore post-pulse current drift affecting peakfinding, choose 
-#first local maximum above 10kV
+#first local maximum above 10kA
 peaks, _ = sp.signal.find_peaks(i_total, height=10*10**3)
 peak_current = i_total[peaks[0]]     
 peak_time = time1[i_total==peak_current][0]
