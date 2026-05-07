@@ -57,8 +57,8 @@ data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
 #woulda used an enum if they existed in python
 columns = {
     'trigger' : 0,      #[V]trigger signal
-    'rog1_raw' : 1,     #[V]Bertha rogowski coil 1
-    'rog2_raw' : 2,     #[V]Bertha rogowski coil 2
+    'rog1' : 1,     #[V]Bertha rogowski coil 1
+    'rog2' : 2,     #[V]Bertha rogowski coil 2
     'diode' : 3,        #[V]diode for laser timing
     'DSO21': 4,
     'DSO22' : 5,
@@ -74,46 +74,52 @@ SEPARATE SCOPE DATA
 #unpack data into 2 arrays based on scope which recorded it
 #in order to avoid the timing mismatch problem (2 separate time columns)
 #doing this instead of interpolation to avoid creating new datapoints
-DSO1 = data[:, 
+"""DSO1 = data[:, 
             [*range(columns['trigger'], columns['diode']+1)]+[columns['time']]]
 DSO2 = data[:, 
-            [*range(columns['DSO21'], columns['time']+1)]]
+            [*range(columns['DSO21'], columns['time']+1)]]"""
 #take only rows where signals aren't nan, using first data column to check
-DSO1 = DSO1[~np.isnan(DSO1[:,0]), :]
-DSO2 = DSO2[~np.isnan(DSO2[:,0]), :]
-#NOTE: the slice creates a view of og data array (like a ref)
-#and reassigning the names doesn't change this I think? (garbage collection?)
-#meaning these arrays take up twice as much memory as they need to
-#BUT that probably doesn't matter much
+DSO1_mask = ~np.isnan(data[:,0])
+time1 = data[DSO1_mask, columns['time']]
+time2 = data[~DSO1_mask, columns['time']]
+data = data[:,:-1]      #strip time away from data bc twice as many non-NaN entries
+# remove NaN entries 
+DSO1 = data[DSO1_mask, 0:4]
+DSO2 = data[~DSO1_mask, 4:]
+data = np.concatenate((DSO1, DSO2), 1)
 
 # %%
 """
 PLOT RAW VOLTAGE DATA
 """
-trigger = DSO1[:,0]
-rog1_raw = DSO1[:,1]
-rog2_raw = DSO1[:,2]
-diode = DSO1[:,3]
-time1 = DSO1[:,4]
+
 time1 = time1*10**-12     #[ps]->[s]
+time2 = time2*10**-12
+def getTime(channel):       #get correct time for channel
+    return time1 if columns[channel]//4==0 else time2     
+    
+def rawplot(ax, channel):
+    ax.plot(getTime(channel), data[:,columns[channel]], label=channel)
 
 fig, (ax1,ax2) = plt.subplots(2,1)
-ax1.plot(time1, trigger, label="Trigger")
-ax1.plot(time1, diode, label="Diode")
+rawplot(ax1,"trigger")
+rawplot(ax1, "diode")
 ax1.set_xlabel("Time after Trigger [s]")
 ax1.set_ylabel("Voltage [V]")
 ax1.legend()
 
-ax2.plot(time1, rog1_raw, label="Rogowski 1")
-ax2.plot(time1, rog2_raw, label="Rogowski 2")
+rawplot(ax2,"rog1")
+rawplot(ax2, "rog2")
 ax2.set_xlabel("Time after Trigger [s]")
 ax2.set_ylabel("Voltage [V]")
 ax2.legend()
+
 #maximize plot
 figManager = plt.get_current_fig_manager()
 figManager.window.showMaximized()
+print("wawa")
 plt.show()
-
+print("wawa")
 #save figure as png
 plt.savefig(folder+dateshot+"_raw_plots")
 
@@ -131,8 +137,8 @@ def cumtrapz(t, y):
 
 #get actual rogowski voltages, accounting for attenuation
 #using the formula 'attenuation[dB] = 20*log(V_in/V_out)'
-rog1 = rog1_raw*10**(dB1/20)
-rog2 = rog2_raw*10**(dB2/20)
+rog1 = data[:,columns["rog1"]]*10**(dB1/20)
+rog2 = data[:,columns["rog2"]]*10**(dB2/20)
   
 #a DC voltage offset in the raw rogowski data results in a linear current slope
 #when current should actually be 0.
@@ -154,14 +160,14 @@ rog2 = rog2_raw*10**(dB2/20)
 #NOTE: not averaging for all pretrigger time anymore, because it was far enough
 #from the actual current rise that changes in noise and dc offset resulted
 #in an inaccurate calibration (see above text wall of DOOM)
-rog1_peak_time = time1[rog1 == max(rog1)][0]
-# time1[np.argmax(rog1)]
+rog1_time = getTime("rog1")
+rog1_peak_time = rog1_time[np.argmax(rog1)]
 averaging_time = 4*10**-6       #[s]
 prepeak_spacing = .8*10**-6     #[s]spacing from peak so averaging doesn't
                                 #occur after current start. >expected risetime
 avg_end = rog1_peak_time -  prepeak_spacing
 avg_start = avg_end - averaging_time
-precurrent = np.logical_and(time1>=avg_start, time1<=avg_end)   
+precurrent = np.logical_and(rog1_time>=avg_start, rog1_time<=avg_end)   
 #NOTE: right now, just taking .8 us before max rog1 voltage as time to stop
 #averaging for finding DC offset, with fixed 4 us of averaging time
 #for future reference: could be better to adjust averaging time based on 
@@ -175,9 +181,9 @@ rog2 -= dc2
 
 #integrate Rogowski voltages to get currents
 int_mask = time1>avg_start  #integrate only after when DC offset calibrated
-i1 = cumtrapz(time1[int_mask], rog1[int_mask]*R1)
-i2 = cumtrapz(time1[int_mask], rog2[int_mask]*R2)
-#pad with zeros to reach length of other arrays for export
+i1 = cumtrapz(rog1_time[int_mask], rog1[int_mask]*R1)
+i2 = cumtrapz(rog1_time[int_mask], rog2[int_mask]*R2)
+#pad with precurrent zeros to reach length of other arrays for export
 num_zeros = len(time1) - len(i1)
 i1 = np.pad(i1, (num_zeros,0))
 i2 = np.pad(i2, (num_zeros,0))
@@ -198,8 +204,8 @@ PEAK CURRENT AND RISE TIME
 #first local maximum above 10kA
 peaks, _ = sp.signal.find_peaks(i_total, height=10*10**3)
 peak_current = i_total[peaks[0]]     
-peak_time = time1[i_total==peak_current][0]
-peak_mask = np.logical_and(time1>=0, time1<=peak_time)
+peak_time = rog1_time[i_total==peak_current][0]
+peak_mask = np.logical_and(rog1_time>=0, rog1_time<=peak_time)
 
 #get start time by extrapolating from linear region (current rise like sin^2)
 #mask for indices in linear region where we will do regression
@@ -207,12 +213,12 @@ linear_mask = np.logical_and(i_total[peak_mask]<=0.8*peak_current,
                               i_total[peak_mask]>=0.2*peak_current)  
 #NOTE: without restricting linear_mask to peak_mask (0-peak current),
 #linear_mask will include the current ramp down after peak, which we don't want  
-time1_linear = time1[peak_mask][linear_mask]
+linearization_time = rog1_time[peak_mask][linear_mask]
 i_linear = i_total[peak_mask][linear_mask]
 
 #y = mx + c = [x, 1][m, c].T = A*[m, c]
 #numpy least squares function gives m, c given A, y
-A = np.vstack((time1_linear, np.ones(len(time1_linear)))).T     
+A = np.vstack((linearization_time, np.ones(len(linearization_time)))).T     
 m, c = np.linalg.lstsq(A, i_linear, rcond=None)[0]
 
 #y = mx + c = m(x + c/m), so -c/m is zero-crossing
@@ -224,9 +230,9 @@ risetime = peak_time - start_time
 #choose region from current start to peak, then from peak till i=.2*peak
 #to get close to encapsulating entire pulse
 charge_mask = np.logical_and(
-    np.logical_and(time1>=start_time, time1<=peak_time+10*10**-6), 
+    np.logical_and(rog1_time>=start_time, rog1_time<=peak_time+10*10**-6), 
                              i_total>=.2*peak_current)
-charge = np.trapz(i_total[charge_mask], time1[charge_mask])
+charge = sum(cumtrapz(rog1_time[charge_mask], i_total[charge_mask]))
 cap_charge = C*V
 
 #Output peak current, current start time and risetime to screen
@@ -237,7 +243,7 @@ startstring = ("Current Start: t = {:.4f} microseconds after trigger"
 risestring = ("Rise time: {:.4f} nanoseconds".format(risetime*10**9))
 chargestring = ("""Charge from integrating: {:.4f} C
 Capacitor charge: {:.4f} C""".format(charge, cap_charge))
-shotstats = peakstring+"\n"+startstring+"\n"+risestring+"\n"+chargestring
+shotstats = "\n".join([peakstring, startstring, risestring, chargestring])
 print(shotstats)
 #write shot stats to text file
 with open(folder+dateshot+"_shotstats.txt", 'w') as file:
@@ -250,25 +256,25 @@ PLOTTING CURRENT
 """
 #plot current through both Rogowskis
 fig, (ax3,ax4)= plt.subplots(2,1)
-ax3.plot(time1, i1, label="Rogowski 1")
-ax3.plot(time1, i2, label="Rogowski 2")
+ax3.plot(rog1_time, i1, label="Rogowski 1")
+ax3.plot(rog1_time, i2, label="Rogowski 2")
 
 ax3.set_xlabel("Time after Trigger [s]")
 ax3.set_ylabel("Current [A]")
 ax3.legend()
 
 #plot total current
-ax4.plot(time1, i_total, label="Total Current")
+ax4.plot(rog1_time, i_total, label="Total Current")
 #plot diode, scaled by peak current for visibility
-ax4.plot(time1, diode*peak_current, label="Diode*peak_current")
+ax4.plot(getTime("diode"), data[:,columns["diode"]]*peak_current, label="Diode*peak_current")
 #plot fit line over current plot
-extrapolate_mask = np.logical_and(time1[peak_mask]>=start_time, 
+extrapolate_mask = np.logical_and(rog1_time[peak_mask]>=start_time, 
                                   i_total[peak_mask]<=0.8*peak_current)
-time1_fit = time1[peak_mask][extrapolate_mask]
-ax4.plot(time1_fit, m*time1_fit + c, '--', label="Linear Fit")
+fit_time = rog1_time[peak_mask][extrapolate_mask]
+ax4.plot(fit_time, m*fit_time + c, '--', label="Linear Fit")
 ax4.plot(start_time, 0, 'x', label="Current Start")
 ax4.plot(peak_time, peak_current, 'x', label="Peak Current")
-ax4.plot(time1[charge_mask][-1], i_total[charge_mask][-1], 'kx', 
+ax4.plot(rog1_time[charge_mask][-1], i_total[charge_mask][-1], 'kx', 
          label="Charge Integration End")
 
 plot_xlim = peak_time + 5*10**-6    #plot from trigger to 5 us after peak
@@ -293,29 +299,17 @@ plt.savefig(folder+dateshot+"_currrent_plots")
 DATA EXPORT
 """
 #export data for plots to text file for Origin import
+spacer = 110011*np.ones((len(time1),1)) 
 export_array = np.concatenate((
-    i_total[np.newaxis].T, DSO1, DSO2), 1) #horizontal cat
-#NOTE: new data array has 11 columns from the original 9, as the time column
-#has been split in 2 and a new column has been added for the total current
+    i_total[np.newaxis].T, spacer, DSO1, spacer, time1[np.newaxis].T, DSO2, spacer, time2[np.newaxis].T), 1) #horizontal cat
+#NOTE: new data array has 14 columns from the original 9, as the time column
+#has been split in 2, total current added, spacers added
 np.savetxt(filepath[:-4]+" formatted.csv", export_array)
 #TODO: decide if this cumbersome 18-digit scientific notation is what we want
 #and csv vs txt (currently using csv just for distinguishing from scope out)
 
 """
 REFERENCE DICT FOR WRITTEN FILE FORMAT
-columns = {
-    'current' : 0   #[A]total current from integrated Rogowskis 1 and 2
-    'trigger' : 1,  #[V]trigger signal
-    'rog1_raw' : 2, #[V]rogowski coil 1
-    'rog2_raw' : 3, #[V]rogowski coil 2
-    'diode' : 4,    #[V]diode for laser timing
-    'time1' : 5,    #[ps]timestamp of samples for DSO1
-                    #NOTE: still in ps bc og time columns in arrays untouched
-    'DSO21': 6,
-    'DSO22' : 7,
-    'DSO23' : 8,
-    'DSO24' : 9,
-    'time2' : 10    #[ps]timestamp of samples for DSO2
-    }
+
 """
 
