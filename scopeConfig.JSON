@@ -1,0 +1,21 @@
+{
+	"experimental_values" : {
+		"rog1_atn" : 19.82,     
+		"rog2_atn" : 19.49,
+		"rog1_const" : 765500000,           
+		"rog2_const" : 820000000,
+		"C" :  3.1e-6,     
+		"V" :  50e3
+	},
+	"columns" : {
+		"trigger" : 0,     
+		"rog1" : 1,     
+		"rog2" : 2,    
+		"diode" : 3,       
+		"DSO21": 4,
+		"DSO22" : 5,
+		"DSO23" : 6,
+		"DSO24" : 7,
+		"time" : 8          
+    }
+}
