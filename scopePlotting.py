@@ -24,7 +24,7 @@ dB1 = 19.82     #from Ann's code
 dB2 = 19.49
 # R1 = 816000000      #Rogowski coil coefficient for BRog1
 # R2 = 1000000000     #Rogowski coil coefficient for BRog2
-R1 = 765500000  #from Ann's code          
+R1 = -765500000  #from Ann's code          
 R2 = 820000000
 C =  3.1*10**-6     #[F]Bertha main cap capacitance, for charge sanity check
 V =  50*10**3       #[V]      ~         charge voltage,             ~             
@@ -58,9 +58,9 @@ data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
 columns = {
     'trigger' : 0,      #[V]trigger signal
     'rog1' : 1,     #[V]Bertha rogowski coil 1
-    'rog2' : 2,     #[V]Bertha rogowski coil 2
+    'mcp' : 2,     #[V]Bertha rogowski coil 2
     'diode' : 3,        #[V]diode for laser timing
-    'DSO21': 4,
+    'rog2': 4,
     'DSO22' : 5,
     'DSO23' : 6,
     'DSO24' : 7,
@@ -117,11 +117,10 @@ ax2.legend()
 #maximize plot
 figManager = plt.get_current_fig_manager()
 figManager.window.showMaximized()
-print("wawa")
-plt.show()
-print("wawa")
 #save figure as png
 plt.savefig(folder+dateshot+"_raw_plots")
+plt.show(block=False)
+
 
 # %%
 """
@@ -187,7 +186,7 @@ i2 = cumtrapz(rog1_time[int_mask], rog2[int_mask]*R2)
 num_zeros = len(time1) - len(i1)
 i1 = np.pad(i1, (num_zeros,0))
 i2 = np.pad(i2, (num_zeros,0))
-i_total = i1-i2     #i2 is flipped (negative voltage for positive current)
+i_total = i1+i2     #signs of currents handled by signs of rogowski constants
 
 #test my code by comparing it to scipy
 #UPDATE 8-28-23, resulted in same array, so my function is good
@@ -232,7 +231,7 @@ risetime = peak_time - start_time
 charge_mask = np.logical_and(
     np.logical_and(rog1_time>=start_time, rog1_time<=peak_time+10*10**-6), 
                              i_total>=.2*peak_current)
-charge = sum(cumtrapz(rog1_time[charge_mask], i_total[charge_mask]))
+charge = cumtrapz(rog1_time[charge_mask], i_total[charge_mask])[-1]
 cap_charge = C*V
 
 #Output peak current, current start time and risetime to screen
@@ -287,7 +286,7 @@ ax4.legend(loc="lower right")
 #maximize plot
 figManager = plt.get_current_fig_manager()
 figManager.window.showMaximized()
-plt.show()
+plt.show(block=False)
 
 #add title with folder filepath
 fig.suptitle(folder)
@@ -308,8 +307,14 @@ np.savetxt(filepath[:-4]+" formatted.csv", export_array)
 #TODO: decide if this cumbersome 18-digit scientific notation is what we want
 #and csv vs txt (currently using csv just for distinguishing from scope out)
 
+
 """
 REFERENCE DICT FOR WRITTEN FILE FORMAT
 
 """
+
+"""
+KEEP PLOTS RESPONSIVE
+"""
+plt.show()
 
