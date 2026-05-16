@@ -13,6 +13,9 @@ import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
 import tkinter as Tkinter, tkinter.filedialog as tkFileDialog
+import json
+import os
+import shutil
 
 # %%
 """ 
@@ -24,8 +27,8 @@ dB1 = 19.82     #from Ann's code
 dB2 = 19.49
 # R1 = 816000000      #Rogowski coil coefficient for BRog1
 # R2 = 1000000000     #Rogowski coil coefficient for BRog2
-R1 = -765500000  #from Ann's code          
-R2 = 820000000
+R1 = 765500000  #from Ann's code          
+R2 = -820000000
 C =  3.1*10**-6     #[F]Bertha main cap capacitance, for charge sanity check
 V =  50*10**3       #[V]      ~         charge voltage,             ~             
 
@@ -33,6 +36,7 @@ V =  50*10**3       #[V]      ~         charge voltage,             ~
 """
 FILE IMPORT
 """
+scriptFolder = os.getcwd()
 #this function opens a file select dialog through Tkinter and returns 
 #the path to the selected file
 def getfile():
@@ -43,30 +47,41 @@ def getfile():
     return filepath 
 
 filepath = getfile()
-folder = '/'.join(filepath.split('/')[:-1]) + '/'
-#string holding date and shot number, e.g 072623s2
-dateshot = filepath.split('/')[-2] 
+folder = os.path.dirname(filepath)
+#string holding date and shot number, e.g 072623s2, is directory name by lab convention
+dateshot = os.path.basename(folder) 
 #read in text file as np array 
 #taking only 9 data columns (of 10 total) from selected file, 
 #ignoring the 'sample' column 
 data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
-                      usecols=range(1,10))
+                      usecols=range(1,10)) #NOTE: change this if adding support for diff numbers of DSOs
 
 #this dictionary gives which column a certain data channel lies on in the
 #data array 
 #woulda used an enum if they existed in python
 columns = {
     'trigger' : 0,      #[V]trigger signal
-    'rog1' : 1,     #[V]Bertha rogowski coil 1
+    'DSO12' : 1,     #[V]Bertha rogowski coil 1
     'mcp' : 2,     #[V]Bertha rogowski coil 2
     'diode' : 3,        #[V]diode for laser timing
-    'rog2': 4,
-    'DSO22' : 5,
+    'rog1': 1,
+    'rog2' : 2,
     'DSO23' : 6,
     'DSO24' : 7,
-    'time' : 8          #[ps]timestamp of sample
+    'time' : 4          #[ps]timestamp of sample
     }
-
+# Load configs (experimental values and scope channel config)
+# check folder for config
+os.chdir(folder)
+if(os.path.isfile("scopeConfig.JSON")):
+    configPath = folder
+else:
+    configPath = scriptFolder
+    # save default config to folder
+    os.chdir(scriptFolder)
+    shutil.copyfile("scopeConfig.JSON", os.path.join(folder,"scopeConfig.JSON"))
+os.chdir(configPath)    
+config = json.load("scopeConfig.JSON")
 # %%
 """
 SEPARATE SCOPE DATA
@@ -86,7 +101,8 @@ data = data[:,:-1]      #strip time away from data bc twice as many non-NaN entr
 # remove NaN entries 
 DSO1 = data[DSO1_mask, 0:4]
 DSO2 = data[~DSO1_mask, 4:]
-data = np.concatenate((DSO1, DSO2), 1)
+#data = np.concatenate((DSO1, DSO2), 1) #NOTE: change this if adding support for diff numbers of DSOs
+data=DSO1
 
 # %%
 """
@@ -106,7 +122,7 @@ rawplot(ax1,"trigger")
 rawplot(ax1, "diode")
 ax1.set_xlabel("Time after Trigger [s]")
 ax1.set_ylabel("Voltage [V]")
-ax1.legend()
+#ax1.legend()
 
 rawplot(ax2,"rog1")
 rawplot(ax2, "rog2")
@@ -118,7 +134,8 @@ ax2.legend()
 figManager = plt.get_current_fig_manager()
 figManager.window.showMaximized()
 #save figure as png
-plt.savefig(folder+dateshot+"_raw_plots")
+os.chdir(folder)
+plt.savefig(dateshot+"_raw_plots")
 plt.show(block=False)
 
 
@@ -160,18 +177,24 @@ rog2 = data[:,columns["rog2"]]*10**(dB2/20)
 #from the actual current rise that changes in noise and dc offset resulted
 #in an inaccurate calibration (see above text wall of DOOM)
 rog1_time = getTime("rog1")
-rog1_peak_time = rog1_time[np.argmax(rog1)]
+rog1_peak_time = rog1_time[np.argmax(np.abs(rog1))]
+ax2.plot(rog1_peak_time, 0, 'x', label="rog1 max")
 averaging_time = 4*10**-6       #[s]
 prepeak_spacing = .8*10**-6     #[s]spacing from peak so averaging doesn't
                                 #occur after current start. >expected risetime
 avg_end = rog1_peak_time -  prepeak_spacing
-avg_start = avg_end - averaging_time
+#avg_start = avg_end - averaging_time
+avg_start=time1[0]
+
 precurrent = np.logical_and(rog1_time>=avg_start, rog1_time<=avg_end)   
 #NOTE: right now, just taking .8 us before max rog1 voltage as time to stop
 #averaging for finding DC offset, with fixed 4 us of averaging time
 #for future reference: could be better to adjust averaging time based on 
 #period of noise and use a more robust method than a fixed offset for finding 
 #current start time
+ax2.plot(rog1_time[precurrent][0], data[:,columns["rog1"]][precurrent][0], 'x', label="avg start")
+ax2.plot(rog1_time[precurrent][-1], data[:,columns["rog1"]][precurrent][-1], 'x', label="avg end")
+ax2.legend()
 
 dc1 = np.mean(rog1[precurrent])     #DC offset is average voltage pre-current
 dc2 = np.mean(rog2[precurrent])
@@ -187,13 +210,6 @@ num_zeros = len(time1) - len(i1)
 i1 = np.pad(i1, (num_zeros,0))
 i2 = np.pad(i2, (num_zeros,0))
 i_total = i1+i2     #signs of currents handled by signs of rogowski constants
-
-#test my code by comparing it to scipy
-#UPDATE 8-28-23, resulted in same array, so my function is good
-# i1_test = sp.integrate.cumtrapz(rog1*R1, time1, initial=0)
-# i2_test = sp.integrate.cumtrapz(rog2*R2, time1, initial=0)
-# print(np.array_equal(i1, i1_test))
-# print(np.array_equal(i2, i2_test))
 
 # %%
 """
@@ -245,7 +261,8 @@ Capacitor charge: {:.4f} C""".format(charge, cap_charge))
 shotstats = "\n".join([peakstring, startstring, risestring, chargestring])
 print(shotstats)
 #write shot stats to text file
-with open(folder+dateshot+"_shotstats.txt", 'w') as file:
+os.chdir(folder)
+with open(dateshot+"_shotstats.txt", 'w') as file:
     file.write(shotstats)
 
 
@@ -291,7 +308,8 @@ plt.show(block=False)
 #add title with folder filepath
 fig.suptitle(folder)
 #save figure as png
-plt.savefig(folder+dateshot+"_currrent_plots")
+os.chdir(folder)
+plt.savefig(dateshot+"_currrent_plots")
 
 # %%
 """
