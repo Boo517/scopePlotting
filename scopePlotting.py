@@ -19,8 +19,9 @@ import shutil
 
 # %%
 """ 
-EXPERIMENTAL VALUES
-"""
+[DEPRECATED] EXPERIMENTAL VALUES
+
+# 5-18-26 switching to scopeConfig.json dict loading for these
 # dB1 = 26        #attenuation in decibels for BRog1
 # dB2 = 26        #attenuation in decibels for BRog2
 dB1 = 19.82     #from Ann's code
@@ -32,7 +33,22 @@ R2 = -820000000
 C =  3.1*10**-6     #[F]Bertha main cap capacitance, for charge sanity check
 V =  50*10**3       #[V]      ~         charge voltage,             ~             
 
+#this dictionary gives which column a certain data channel lies on in the
+#data array 
+#woulda used an enum if they existed in python
+columns = {
+    'trigger' : 0,      #[V]trigger signal
+    'DSO12' : 1,     #[V]Bertha rogowski coil 1
+    'mcp' : 2,     #[V]Bertha rogowski coil 2
+    'diode' : 3,        #[V]diode for laser timing
+    'rog1': 1,
+    'rog2' : 2,
+    'DSO23' : 6,
+    'DSO24' : 7,
+    'time' : 4          #[ps]timestamp of sample
+    }
 # %%
+"""
 """
 FILE IMPORT
 """
@@ -56,32 +72,26 @@ dateshot = os.path.basename(folder)
 data = np.genfromtxt(filepath, skip_header=2, delimiter=',',
                       usecols=range(1,10)) #NOTE: change this if adding support for diff numbers of DSOs
 
-#this dictionary gives which column a certain data channel lies on in the
-#data array 
-#woulda used an enum if they existed in python
-columns = {
-    'trigger' : 0,      #[V]trigger signal
-    'DSO12' : 1,     #[V]Bertha rogowski coil 1
-    'mcp' : 2,     #[V]Bertha rogowski coil 2
-    'diode' : 3,        #[V]diode for laser timing
-    'rog1': 1,
-    'rog2' : 2,
-    'DSO23' : 6,
-    'DSO24' : 7,
-    'time' : 4          #[ps]timestamp of sample
-    }
-# Load configs (experimental values and scope channel config)
+"""
+LOAD SCOPE CONFIGS AND EXPERIMENTAL DATA
+"""
 # check folder for config
 os.chdir(folder)
 if(os.path.isfile("scopeConfig.JSON")):
     configPath = folder
+    # save config file to program folder to use as future default
+    shutil.copyfile("scopeConfig.JSON", os.path.join(scriptFolder,"scopeConfig.JSON"))
 else:
     configPath = scriptFolder
     # save default config to folder
     os.chdir(scriptFolder)
     shutil.copyfile("scopeConfig.JSON", os.path.join(folder,"scopeConfig.JSON"))
-os.chdir(configPath)    
-config = json.load("scopeConfig.JSON")
+os.chdir(configPath)
+print("Using scope config from "+configPath)
+with open("scopeConfig.JSON", "r") as f:    
+    config = json.load(f)
+columns = config["columns"]
+experimental_values = config["experimental_values"]
 # %%
 """
 SEPARATE SCOPE DATA
@@ -89,20 +99,14 @@ SEPARATE SCOPE DATA
 #unpack data into 2 arrays based on scope which recorded it
 #in order to avoid the timing mismatch problem (2 separate time columns)
 #doing this instead of interpolation to avoid creating new datapoints
-"""DSO1 = data[:, 
-            [*range(columns['trigger'], columns['diode']+1)]+[columns['time']]]
-DSO2 = data[:, 
-            [*range(columns['DSO21'], columns['time']+1)]]"""
-#take only rows where signals aren't nan, using first data column to check
-DSO1_mask = ~np.isnan(data[:,0])
+DSO1_mask = ~np.isnan(data[:,0])        # NaN rows are DSO2
 time1 = data[DSO1_mask, columns['time']]
 time2 = data[~DSO1_mask, columns['time']]
-data = data[:,:-1]      #strip time away from data bc twice as many non-NaN entries
+data = data[:,:-1]      #strip og time away from data bc twice as many non-NaN entries
 # remove NaN entries 
 DSO1 = data[DSO1_mask, 0:4]
 DSO2 = data[~DSO1_mask, 4:]
-#data = np.concatenate((DSO1, DSO2), 1) #NOTE: change this if adding support for diff numbers of DSOs
-data=DSO1
+data = np.concatenate((DSO1, DSO2), 1) #NOTE: change this if adding support for diff numbers of DSOs
 
 # %%
 """
@@ -153,8 +157,8 @@ def cumtrapz(t, y):
 
 #get actual rogowski voltages, accounting for attenuation
 #using the formula 'attenuation[dB] = 20*log(V_in/V_out)'
-rog1 = data[:,columns["rog1"]]*10**(dB1/20)
-rog2 = data[:,columns["rog2"]]*10**(dB2/20)
+rog1 = data[:,columns["rog1"]]*10**(experimental_values["rog1_atn"]/20)
+rog2 = data[:,columns["rog2"]]*10**(experimental_values["rog2_atn"]/20)
   
 #a DC voltage offset in the raw rogowski data results in a linear current slope
 #when current should actually be 0.
@@ -203,8 +207,8 @@ rog2 -= dc2
 
 #integrate Rogowski voltages to get currents
 int_mask = time1>avg_start  #integrate only after when DC offset calibrated
-i1 = cumtrapz(rog1_time[int_mask], rog1[int_mask]*R1)
-i2 = cumtrapz(rog1_time[int_mask], rog2[int_mask]*R2)
+i1 = cumtrapz(rog1_time[int_mask], rog1[int_mask]*experimental_values["rog1_const"])
+i2 = cumtrapz(rog1_time[int_mask], rog2[int_mask]*experimental_values["rog2_const"])
 #pad with precurrent zeros to reach length of other arrays for export
 num_zeros = len(time1) - len(i1)
 i1 = np.pad(i1, (num_zeros,0))
@@ -248,7 +252,7 @@ charge_mask = np.logical_and(
     np.logical_and(rog1_time>=start_time, rog1_time<=peak_time+10*10**-6), 
                              i_total>=.2*peak_current)
 charge = cumtrapz(rog1_time[charge_mask], i_total[charge_mask])[-1]
-cap_charge = C*V
+cap_charge = experimental_values["C"]*experimental_values["V"]
 
 #Output peak current, current start time and risetime to screen
 peakstring = ("Peak Current: {:.4f} kA at t = {:.4f} microseconds after trigger"
